@@ -12,7 +12,7 @@ module Json {
 			paths: Object[],
 			references: Object[];
 			
-		map = {};
+		map = obj instanceof Array ? [] : {};
 		paths = ['#'];
 		references = [obj];
 		
@@ -32,7 +32,7 @@ module Json {
 			var path = item.path + '/' + i;
 			paths.push(path);
 			references.push(item.inst[i]);
-			item.node[i] = item.inst[i];
+			item.node[i] = item.inst[i] instanceof Array ? [] : {};
 			return {'path': path, 'inst': item.inst[i], 'node': item.node[i]};
 		};
 		
