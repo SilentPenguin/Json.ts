@@ -28,7 +28,7 @@ module Search {
 	 */
 	
 	export function depth(obj: Object, action: (path: string[]) => boolean): void {
-		var queue: string[][]] = [[]];
+		var queue: string[][] = [[]];
 		
 		while(queue.length) {
 			var path = queue.shift();
