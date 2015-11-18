@@ -1,83 +1,159 @@
-module Json {
-	export function serialize(obj: Object):string {
-		return JSON.stringify(map(obj));
+/**
+ * Decorator applied to classes, which registers them as part of the type serialiser.
+ */
+function serialise(key: string): (target: Object) => void;
+function serialise(target: Object): void;
+function serialise(argument: any): any {
+	var key = argument.name || argument;
+	var serialise = function(target: Object) {
+		Object.defineProperty(target, '$type', { 'value': key });
+		Json.TypePlugin.types[key] = target;
 	}
-	
-	export function deserialize(json: string): Object {
-		return unmap(JSON.parse(json));
-	}
-	
-	function map(obj: Object): Object {
-		var map: Object,
-			paths: Object[],
-			references: Object[];
-			
-		map = obj instanceof Array ? [] : {};
-		paths = ['#'];
-		references = [obj];
-		
-		var insertReferences = function(item, i) {
-			if (!(item.inst[i] instanceof Object)) {
-				item.node[i] = item.inst[i];
-				return;
-			}
-			
-			var index = references.indexOf(item.inst[i]);
-			
-			if (index > -1) {
-				item.node[i] = {'$ref': paths[index]};
-				return;
-			}
-			
-			var path = item.path + '/' + i;
-			paths.push(path);
-			references.push(item.inst[i]);
-			item.node[i] = item.inst[i] instanceof Array ? [] : {};
-			return {'path': path, 'inst': item.inst[i], 'node': item.node[i]};
-		};
-		
-		breadthSearch({'path': '#', 'inst': obj, 'node': map}, (item) => item['inst'], insertReferences);
+	return key == argument ? serialise : serialise(argument);
+}
 
-		return map;
+module Json {
+	/**
+	 * Converts an object into the JSON format.
+	 */
+	export function serialise(obj: Object): string {
+		return new Provider().serialise(obj);
+	}
+
+	/**
+	 * Rehydrates a string back into its original Object from a JSON string.
+	 */
+	export function deserialise<T>(json: string): T;
+	export function deserialise(json: string): Object;
+	export function deserialise(json: string): Object {
+		return new Provider().deserialise(json);
 	}
 	
-	function unmap(json: Object): Object {
-		var removeReferences = function(item, i) {
-			var keys = Object.keys(item[i]);
-			
-			if (keys.length != 1 || keys[0] != '$ref')
-				return item[i];
-			item[i] = locate(json, item[i]['$ref']);
+	/**
+	 * Used by the Provider to register plugins to transform the object passed. 
+	 */
+	export interface ProviderPlugin {
+		map(obj: Object, map: Object, path: string[]) : boolean;
+		unmap(obj: Object, path: string[]) : boolean;
+	}
+	
+	/**
+	 * Fills the clone with the same schema as the original passed.
+	 */
+	export class PopulatePlugin implements ProviderPlugin {
+		public map (obj: Object, map: Object, path: string[]): boolean {
+			if (!path.length) return;
+			var inst = Resolve.path(obj, path);
+			if (inst instanceof Function) return;
+			var clone = inst instanceof Object ? Object.create(inst.constructor.prototype) : inst;
+			Resolve.assign(map, path, clone);
 		}
 		
-		breadthSearch(json, (item) => item, removeReferences)
-		
-		return json;
+		public unmap (obj: Object, path: string[]): boolean { return false; }
 	}
 	
-	function locate(json: Object, $ref:String):Object {
-		var result: Object,
-			queue: string[];
+	/**
+	 * Cleans up the object graph, removing multiple references and replacing them with placeholder objects.
+	 */
+	export class ReferencePlugin implements ProviderPlugin {
 		
-		queue = $ref.split('/');
+		private paths = [];
+		private references = [];
 		
-		var followPath = (value) => result = value == '#' ? json : result[value];
-		
-		queue.forEach(followPath)
-		
-		return result;
-	}
-	
-	function breadthSearch(start: Object, selector: (next: Object) => Object, action:(item: Object, i:Object)=> Object)
-	{
-		var queue = [start];
-		while(queue.length){
-			var item = queue.shift();
-			for(var i in selector(item)){
-				var result = action(item, i);
-				if (result == undefined) continue;
-				queue.push(result);
+		public map (obj: Object, map: Object, path: string[]): boolean {
+			var inst = Resolve.path(obj, path);
+			
+			if (!(inst instanceof Object) || inst instanceof Function) return;
+			
+			var index = this.references.indexOf(inst);
+			
+			if (index > -1) {
+				Resolve.assign(map, path, {'$ref' : this.paths[index]});
+				return true;
 			}
+			
+			this.paths.push('#/' + path.join('/'));
+			this.references.push(inst);
+		}
+		
+		public unmap(obj: Object, path: string[]): boolean {
+			var inst = Resolve.path(obj, path);
+			var keys = Object.keys(inst);
+			if (keys.length != 1 || keys[0] != '$ref') return;
+			var refpath = inst['$ref'].split('/').slice(1);
+			var ref = Resolve.path(obj, refpath);
+			Resolve.assign(obj, path, ref);
+			return true;
+		}
+	}
+	
+	/**
+	 * Stores types registered using the @serialise decorator. Dehydrates, and rehydrates those types.
+	 */
+	export class TypePlugin implements ProviderPlugin {
+		static types = {};
+		public map(obj: Object, map: Object, path: string[]): boolean {
+			var inst = Resolve.path(obj, path);
+			if (!inst.constructor.hasOwnProperty('$type')) return;
+			Resolve.assign(map, path.concat('$type'), inst.constructor['$type']);
+		}
+		
+		public unmap(obj: Object, path: string[]): boolean {
+			var inst = Resolve.path(obj, path);
+			if (!inst.hasOwnProperty('$type')) return;
+			var type = TypePlugin.types[inst['$type']];
+			var clone = Object.create(type.prototype);
+			for (var i in inst){
+				if (i == '$type') continue;
+				clone[i] = inst[i];
+			}
+			Resolve.assign(obj, path, clone);
+		}
+	}
+
+	/**
+	 * Performs the actions to convert to and from Json, while calling the plugins to handle special functionality.
+	 */
+	export class Provider {
+		private plugins: ProviderPlugin[] = [
+			new ReferencePlugin(),
+			new PopulatePlugin(),
+			new TypePlugin()
+		];
+	
+		public serialise(obj: Object): string {
+			return JSON.stringify(this.map(obj));
+		}
+	
+		public deserialise(json: string): Object {
+			return this.unmap(JSON.parse(json));
+		}
+	
+		private map(obj: Object): Object {
+			
+			var map = Object.create(obj.constructor.prototype);
+			var handlePlugins = (path: string[]):boolean => {
+				var result = false;
+				this.plugins.forEach((plugin) => result = result || plugin.map(obj, map, path));
+				return result;
+			};
+			
+			Search.breadth(obj, handlePlugins);
+			
+			return map;
+		}
+	
+		private unmap(obj: Object): Object {
+			
+			var handlePlugins = (path:string[]):boolean => {
+				var result = false;
+				this.plugins.forEach((plugin) => result = result || plugin.unmap(obj, path));
+				return result;
+			};
+			
+			Search.breadth(obj, handlePlugins);
+			
+			return obj;
 		}
 	}
 }
