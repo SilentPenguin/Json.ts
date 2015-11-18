@@ -21,8 +21,10 @@ The breadth first approach makes the resulting JSON document easier to read in m
 
 # Using Json.ts
 
-Making use of Json.ts is relatively simple: There are two methods, serialize, and deserialize.
+Making use of Json.ts is relatively simple: There are two methods, serialise, and deserialise.
 
-Serialize accepts an object and returns a json string containing references. Any time a duplicate reference is discovered within the object, an object containing a reference path is stored in its place.
+``serialise`` accepts an object and returns a json string containing references. Any time a duplicate reference is discovered within the object, an object containing a reference path is stored in its place.
 
-Deserialize accepts a json string, and converts it back to an object, after conversion, it seeks out any objects containing only a ``$ref`` property, and replaces that object with the object located at the path.
+``Deserialise`` accepts a json string, and converts it back to an object, after conversion, it seeks out any objects containing only a ``$ref`` property, and replaces that object with the object located at the path.
+
+You can also optionally mark your classes using the @serialise decorator, which will insert metadata into your object graph mapping the key you provide to the type referenced. When deserialising, the result will be constructed using the keyed object prototype to create the object, meaning your methods and static properties will be available after rehydration.
