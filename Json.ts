@@ -12,7 +12,7 @@ function serialise(argument: any): any {
 	return key == argument ? serialise : serialise(argument);
 }
 
-module Json {
+namespace Json {
 	/**
 	 * Converts an object into the JSON format.
 	 */
@@ -45,11 +45,11 @@ module Json {
 			if (!path.length) return;
 			var inst = Resolve.path(obj, path);
 			if (inst instanceof Function) return;
-			var clone = inst instanceof Object ? Object.create(inst.constructor.prototype) : inst;
+			var clone = inst instanceof Object && !(inst instanceof Date) ? Object.create(inst.constructor.prototype) : inst;
 			Resolve.assign(map, path, clone);
 		}
 		
-		public unmap (obj: Object, path: string[]): boolean { return false; }
+		public unmap (): boolean { return false; }
 	}
 	
 	/**
@@ -103,11 +103,26 @@ module Json {
 			if (!inst.hasOwnProperty('$type')) return;
 			var type = TypePlugin.types[inst['$type']];
 			var clone = Object.create(type.prototype);
-			for (var i in inst){
+			//clone.constructor = type.constructor;
+			for (var i in inst) {
 				if (i == '$type') continue;
 				clone[i] = inst[i];
 			}
 			Resolve.assign(obj, path, clone);
+		}
+	}
+	
+	/**
+	 * Restores Dates to date objects
+	 */
+	export class DatePlugin implements ProviderPlugin {
+		static dateRegex = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?(Z|([+-]\d\d:\d\d))$/;
+		public map () { return false; }
+		
+		public unmap(obj: Object, path: string[]): boolean {
+			var inst = Resolve.path(obj, path);
+			if (typeof inst != 'string' || !DatePlugin.dateRegex.test(inst as string)) return;
+			Resolve.assign(obj, path, new Date(inst as string));
 		}
 	}
 
@@ -118,7 +133,8 @@ module Json {
 		private plugins: ProviderPlugin[] = [
 			new ReferencePlugin(),
 			new PopulatePlugin(),
-			new TypePlugin()
+			new TypePlugin(),
+			new DatePlugin()
 		];
 	
 		public serialise(obj: Object): string {
