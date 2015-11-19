@@ -45,7 +45,7 @@ namespace Json {
 			if (!path.length) return;
 			var inst = Resolve.path(obj, path);
 			if (inst instanceof Function) return;
-			var clone = inst instanceof Object && !(inst instanceof Date) ? Object.create(inst.constructor.prototype) : inst;
+			var clone = Object.keys(inst).length || '$type' in inst.constructor ? Object.create(inst.constructor.prototype) : inst;
 			Resolve.assign(map, path, clone);
 		}
 		
