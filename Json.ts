@@ -72,7 +72,7 @@ namespace Json {
 				return true;
 			}
 			
-			this.paths.push('#/' + path.join('/'));
+			this.paths.push(path.join('/'));
 			this.references.push(inst);
 		}
 		
@@ -80,7 +80,7 @@ namespace Json {
 			var inst = Resolve.path(obj, path);
 			var keys = Object.keys(inst);
 			if (keys.length != 1 || keys[0] != '$ref') return;
-			var refpath = inst['$ref'].split('/').slice(1);
+			var refpath = inst['$ref'].split('/');
 			var ref = Resolve.path(obj, refpath);
 			Resolve.assign(obj, path, ref);
 			return true;
@@ -103,7 +103,6 @@ namespace Json {
 			if (!inst.hasOwnProperty('$type')) return;
 			var type = TypePlugin.types[inst['$type']];
 			var clone = Object.create(type.prototype);
-			//clone.constructor = type.constructor;
 			for (var i in inst) {
 				if (i == '$type') continue;
 				clone[i] = inst[i];
@@ -147,16 +146,18 @@ namespace Json {
 	
 		private map(obj: Object): Object {
 			
-			var map = Object.create(obj.constructor.prototype);
+			var map = {};
 			var handlePlugins = (path: string[]):boolean => {
 				var result = false;
 				this.plugins.forEach((plugin) => result = result || plugin.map(obj, map, path));
 				return result;
 			};
 			
+			obj = {'#': obj};
+			
 			Search.breadth(obj, handlePlugins);
 			
-			return map;
+			return map['#'];
 		}
 	
 		private unmap(obj: Object): Object {
@@ -167,9 +168,11 @@ namespace Json {
 				return result;
 			};
 			
+			obj = {'#': obj};
+			
 			Search.breadth(obj, handlePlugins);
 			
-			return obj;
+			return obj['#'];
 		}
 	}
 }
