@@ -1,6 +1,6 @@
 # Json.ts
 Json.ts is a thin wrapper around JSON written with Typescript which provides protection against complex object graphs.
-#Differences to alternatives
+# Differences to alternatives
 The Majority of examples I looked at when creating Json.ts performed a recursive depth first search of the passed object. Often the references themselves would be buried many instances down in a circular reference where the depth search first incountered them.
 
 With Json.ts I looked to try and maintain your original object as much as possible by performing a breadth first search and keeping additional clutter to a minimum, while still providing easy to read paths to locate objects when working with smaller documents.
